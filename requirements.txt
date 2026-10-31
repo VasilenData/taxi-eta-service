@@ -1,0 +1,2 @@
+-r requirements-serve.txt
+mlflow>=3.0

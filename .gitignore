@@ -1,0 +1,6 @@
+mlflow.db
+mlruns/
+models/_last_run/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
