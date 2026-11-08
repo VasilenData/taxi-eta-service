@@ -4,7 +4,7 @@
 
 An end-to-end machine learning service: data, training, experiment tracking, a model registry with a promotion rule, a validated REST API, monitoring and drift detection, a container and CI. Predicts how long a NYC yellow-taxi trip will take.
 
-**Result on a held-out future month (October 2023, 3.35 million trips): mean error 3.52 minutes against 9.33 for a distance-and-speed baseline, 62% lower.**
+**Historical October 2023 evaluation (3.35 million trips): mean absolute error 3.52 minutes against 9.33 for a distance-and-speed baseline, 62% lower.** The earlier promotion rule used test-month scores; this stored artifact has not been retrained or reevaluated under the current validation-only rule. These figures also use TLC's recorded taximeter distance, not a planned-route estimate available at booking.
 
 ```mermaid
 flowchart LR
@@ -22,12 +22,12 @@ flowchart LR
 
 | Concern | What is built |
 |---|---|
-| **Honest evaluation** | Train on Jan to Aug, stop early and select on September, report on October. The CLI enforces disjoint chronological month ranges and excludes out-of-period pickup rows. |
+| **Current evaluation workflow** | Train on Jan to Aug, stop early and select on September, report on October. The CLI enforces disjoint chronological month ranges and excludes out-of-period pickup rows. |
 | **A baseline to beat** | A distance divided by median hourly speed rule. A test asserts the model beats it. |
 | **Reproducibility** | MLflow run per training (params, metrics, model files). A split/row-count configuration fingerprint and feature list are stored; the current fingerprint is not an input-content checksum. |
 | **Safe model updates** | Champion/challenger: the registry changes only if the new model wins on the same validation month; test metrics are reporting-only. A test proves a weaker model does not overwrite it. |
 | **API contract** | Pydantic validation on every field: zone ids 1 to 265, distance 0.1 to 100 miles, passengers 1 to 6, NYC local wall-clock ISO timestamps without an offset. Invalid-input cases return 422. Batch limited to 1,000. |
-| **Uncertainty** | Every prediction returns a range (10th to 90th percentile), calibrated on validation, 83.7% coverage on the unseen test month. |
+| **Uncertainty** | Every prediction returns a range (10th to 90th percentile), calibrated on validation; recorded October coverage was 83.7%. |
 | **Operations** | `/health`, `/ready` (503 until a model loads), `/metrics` in Prometheus format, `/model` returns the model card numbers, Docker image runs as a non-root user, compose file adds Prometheus. |
 | **Drift monitoring** | `/drift` computes the Population Stability Index per feature over recent requests. See the model card for measured values. |
 | **Tests and CI** | Tests cover data cleaning, split isolation, model behavior, API validation, drift and champion/challenger selection. CI lints, tests, loads the committed model, load-tests the real server and builds and calls the Docker image. |
@@ -66,7 +66,7 @@ One worker is CPU bound at about 250 requests per second (each request builds a 
 
 ## Decisions and limits
 
-- **Distance is an input.** At booking time a route planner supplies it. Without it the model would be much weaker, and I did not pretend otherwise.
+- **Distance is an input.** API callers supply it. Historical training and evaluation use the taximeter's recorded trip distance; no route planner is integrated, and accuracy with a planned-route estimate at booking has not been evaluated.
 - **LightGBM, not a neural network.** On tabular data with a few categorical columns it trains in 31 seconds and serves in milliseconds. A neural network would add cost without a clear gain here.
 - **File registry, not a registry server.** `models/current` plus MLflow runs is enough for one model. The champion/challenger rule is the part that matters, and it is separate from the storage.
 - **Drift needs traffic.** `/drift` returns `insufficient_data` until 200 requests have arrived, and keeps the last 5,000 in memory only. A production setup would write requests to a log or topic.
