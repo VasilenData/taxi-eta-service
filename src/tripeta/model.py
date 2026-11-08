@@ -64,5 +64,8 @@ def save(booster: lgb.Booster, meta: dict, folder: Path) -> None:
 
 
 def load(folder: Path) -> tuple[lgb.Booster, dict]:
-    return (lgb.Booster(model_file=str(folder / "model.txt")),
-            json.loads((folder / "metadata.json").read_text()))
+    # LightGBM stores byte offsets between trees. Git's Windows CRLF conversion
+    # changes those offsets and can terminate the native loader before Python
+    # can catch an exception. Universal-newline text loading restores LF first.
+    return (lgb.Booster(model_str=(folder / "model.txt").read_text(encoding="utf-8")),
+            json.loads((folder / "metadata.json").read_text(encoding="utf-8")))
