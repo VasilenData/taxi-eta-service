@@ -1,4 +1,3 @@
-import json
 import pytest
 
 from tripeta import model
@@ -29,10 +28,10 @@ def test_champion_challenger_keeps_the_better_model(tmp_path, monkeypatch, frame
     monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
     first = train.run(Namespace(rounds=150, **common))
     assert first["promoted"]
-    champion = json.loads((tmp_path / "reg" / "metadata.json").read_text())["metrics"]["test_mae_min"]
+    champion = model.load(tmp_path / "reg")[1]["metrics"]["test_mae_min"]
     weak = train.run(Namespace(rounds=3, **common))
     assert not weak["promoted"]
-    assert json.loads((tmp_path / "reg" / "metadata.json").read_text())["metrics"]["test_mae_min"] == champion
+    assert model.load(tmp_path / "reg")[1]["metrics"]["test_mae_min"] == champion
     assert model.mae([1, 2], [1, 2]) == 0
 
 

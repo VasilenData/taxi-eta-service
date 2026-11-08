@@ -101,7 +101,7 @@ def run(args) -> dict:
     # Model selection uses validation only. The future test month is reporting-only.
     registry = Path(args.registry)
     promoted, reason = True, "no champion yet"
-    if (registry / "model.txt").exists():
+    if model.exists(registry):
         champ, champ_meta = model.load(registry)
         champ_mae = model.mae(valid_df.duration_min, model.predict(champ, valid_df))
         promoted = metrics["validation_mae_min"] < champ_mae * (1 - args.min_gain)
