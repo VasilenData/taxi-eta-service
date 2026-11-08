@@ -17,22 +17,31 @@ import mlflow
 import numpy as np
 
 from . import __version__, drift, model
-from .data import FEATURES, LIMITS, load_months
+from .data import FEATURES, LIMITS, load_months, validate_month
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def month_range(spec: str) -> list[str]:
     if ".." not in spec:
-        return [spec]
+        return [validate_month(spec)]
     a, b = spec.split("..")
+    validate_month(a)
+    validate_month(b)
     (ya, ma), (yb, mb) = (map(int, a.split("-")), map(int, b.split("-")))
+    if (ya, ma) > (yb, mb):
+        raise ValueError("month range must be in chronological order")
     out = []
     while (ya, ma) <= (yb, mb):
-        out.append(f"{ya}-{ma:02d}")
+        out.append(f"{ya:04d}-{ma:02d}")
         ma += 1
         ya, ma = (ya + 1, 1) if ma == 13 else (ya, ma)
     return out
+
+
+def validate_splits(train: list[str], valid: list[str], test: list[str]) -> None:
+    if not train or not valid or not test or not (max(train) < min(valid) and max(valid) < min(test)):
+        raise ValueError("require non-overlapping chronological splits: train < validation < test")
 
 
 def segment_report(df, pred) -> dict:
@@ -48,6 +57,9 @@ def segment_report(df, pred) -> dict:
 
 def run(args) -> dict:
     tr_m, va_m, te_m = month_range(args.train), month_range(args.valid), month_range(args.test)
+    validate_splits(tr_m, va_m, te_m)
+    if not 0 <= args.min_gain < 1:
+        raise ValueError("min_gain must be between 0 (inclusive) and 1 (exclusive)")
     train_df = load_months(args.data_dir, tr_m, args.sample_per_month)
     valid_df = load_months(args.data_dir, va_m, args.sample_per_month)
     test_df = load_months(args.data_dir, te_m, args.test_sample)
@@ -64,6 +76,7 @@ def run(args) -> dict:
     base_pred = base.predict(test_df)
 
     metrics = {
+        "validation_mae_min": model.mae(valid_df.duration_min, model.predict(booster, valid_df)),
         "test_mae_min": model.mae(test_df.duration_min, pred),
         "test_median_ape": model.mape_median(test_df.duration_min, pred),
         "baseline_mae_min": model.mae(test_df.duration_min, base_pred),
@@ -85,14 +98,15 @@ def run(args) -> dict:
         "segments": segment_report(test_df, pred), "drift_baseline": drift.baseline_profile(train_df),
     }
 
-    # Champion / challenger: the registry only changes if the new model is clearly better on the SAME test month.
+    # Model selection uses validation only. The future test month is reporting-only.
     registry = Path(args.registry)
     promoted, reason = True, "no champion yet"
     if (registry / "model.txt").exists():
         champ, champ_meta = model.load(registry)
-        champ_mae = model.mae(test_df.duration_min, model.predict(champ, test_df))
-        promoted = metrics["test_mae_min"] < champ_mae * (1 - args.min_gain)
-        reason = f"challenger {metrics['test_mae_min']:.3f} vs champion {champ_mae:.3f} min (needs {args.min_gain:.1%} gain)"
+        champ_mae = model.mae(valid_df.duration_min, model.predict(champ, valid_df))
+        promoted = metrics["validation_mae_min"] < champ_mae * (1 - args.min_gain)
+        reason = (f"validation challenger {metrics['validation_mae_min']:.3f} vs champion {champ_mae:.3f} min "
+                  f"(needs {args.min_gain:.1%} gain)")
     if promoted:
         model.save(booster, meta, registry)
     mlflow.set_tracking_uri(args.mlflow_uri)

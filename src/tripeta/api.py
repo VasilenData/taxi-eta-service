@@ -39,6 +39,13 @@ class TripRequest(BaseModel):
             raise ValueError("distance must be a finite number")
         return v
 
+    @field_validator("pickup_time")
+    @classmethod
+    def local_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is not None and value.utcoffset() is not None:
+            raise ValueError("pickup_time must be NYC local wall time without a timezone offset")
+        return value
+
 
 class Prediction(BaseModel):
     predicted_minutes: float
@@ -107,7 +114,10 @@ def create_app(model_dir: Path | None = None) -> FastAPI:
     async def timing(request: Request, call_next):
         t0 = time.perf_counter()
         response = await call_next(request)
-        metrics.observe(request.url.path, response.status_code, time.perf_counter() - t0)
+        route = request.scope.get("route")
+        # Arbitrary 404 URLs must not create unbounded Prometheus label series.
+        path = getattr(route, "path", "<unmatched>")
+        metrics.observe(path, response.status_code, time.perf_counter() - t0)
         return response
 
     def run(trips: list[TripRequest]) -> list[Prediction]:

@@ -39,3 +39,15 @@ def test_baseline_is_distance_over_speed():
     df = pd.DataFrame({"hour": [8] * 3, "distance_miles": [2.0, 4.0, 6.0], "duration_min": [12.0, 24.0, 36.0]})
     b = model.Baseline.fit(df)
     assert abs(b.predict(df.iloc[[0]])[0] - 12.0) < 1e-6
+
+
+def test_model_loader_normalizes_windows_checkout_newlines(tmp_path, monkeypatch):
+    (tmp_path / "model.txt").write_bytes(b"tree\r\nversion=v4\r\n")
+    (tmp_path / "metadata.json").write_text('{}', encoding="utf-8")
+    seen = {}
+    def capture(**kwargs):
+        seen.update(kwargs)
+        return object()
+    monkeypatch.setattr(model.lgb, "Booster", capture)
+    model.load(tmp_path)
+    assert seen == {"model_str": "tree\nversion=v4\n"}

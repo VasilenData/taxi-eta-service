@@ -29,4 +29,4 @@ Error by time of day: 00-05 2.47, 06-09 3.37, 10-15 4.04, 16-19 3.71, 20-23 2.96
 
 ## Monitoring
 `GET /drift` compares the last 5,000 requests with the training distribution using the Population Stability Index per feature (below 0.1 stable, 0.1 to 0.25 moderate, above 0.25 major). On real data: March, September and October 2023 all score below 0.011 (stable). A simulated airport-only stream scores 7.1 on pickup zone and 4.1 on distance (major).
-Retraining uses a champion/challenger rule: a new model replaces the registry only if it beats the current model on the same test month.
+Retraining uses a champion/challenger rule: current code promotes only when the challenger beats the champion on the validation month. The test month is reporting-only; the historical artifact above was produced before that policy change.
