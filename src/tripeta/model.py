@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,12 +60,43 @@ def predict(booster: lgb.Booster, df: pd.DataFrame) -> np.ndarray:
 
 
 def save(booster: lgb.Booster, meta: dict, folder: Path) -> None:
+    """Publish model and metadata as one atomic local-file snapshot.
+
+    Readers see either the complete previous bundle or the complete replacement.
+    Promotion decisions still require a single writer; this is not a distributed
+    registry or a guarantee against filesystem/hardware failure.
+    """
     folder.mkdir(parents=True, exist_ok=True)
-    booster.save_model(str(folder / "model.txt"))
-    (folder / "metadata.json").write_text(json.dumps(meta, indent=2, sort_keys=True))
+    payload = json.dumps({"format_version": 1, "model": booster.model_to_string(), "metadata": meta},
+                         sort_keys=True, allow_nan=False)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=folder,
+                                         prefix=".bundle-", suffix=".tmp", delete=False) as output:
+            temporary = Path(output.name)
+            output.write(payload)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, folder / "bundle.json")
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def exists(folder: Path) -> bool:
+    """Recognize new bundles and the checked-in legacy model layout."""
+    return (folder / "bundle.json").exists() or (folder / "model.txt").exists()
 
 
 def load(folder: Path) -> tuple[lgb.Booster, dict]:
+    bundle = folder / "bundle.json"
+    if bundle.exists():
+        snapshot = json.loads(bundle.read_text(encoding="utf-8"))
+        if (not isinstance(snapshot, dict) or snapshot.get("format_version") != 1
+                or not isinstance(snapshot.get("model"), str) or not snapshot["model"].strip()
+                or not isinstance(snapshot.get("metadata"), dict)):
+            raise ValueError("invalid model bundle")
+        return lgb.Booster(model_str=snapshot["model"]), snapshot["metadata"]
     # LightGBM stores byte offsets between trees. Git's Windows CRLF conversion
     # changes those offsets and can terminate the native loader before Python
     # can catch an exception. Universal-newline text loading restores LF first.
