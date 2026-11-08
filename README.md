@@ -22,15 +22,15 @@ flowchart LR
 
 | Concern | What is built |
 |---|---|
-| **Honest evaluation** | Train on Jan to Aug, stop early on September, report on October. A random split would leak the future. |
+| **Honest evaluation** | Train on Jan to Aug, stop early and select on September, report on October. The CLI enforces disjoint chronological month ranges and excludes out-of-period pickup rows. |
 | **A baseline to beat** | A distance divided by median hourly speed rule. A test asserts the model beats it. |
-| **Reproducibility** | MLflow run per training (params, metrics, model files). Data fingerprint and feature list stored with the model. |
-| **Safe model updates** | Champion/challenger: the registry changes only if the new model wins on the same test month. A test proves a weaker model does not overwrite it. |
-| **API contract** | Pydantic validation on every field: zone ids 1 to 265, distance 0.1 to 100 miles, passengers 1 to 6, ISO timestamps. 9 invalid-input cases return 422. Batch limited to 1,000. |
+| **Reproducibility** | MLflow run per training (params, metrics, model files). A split/row-count configuration fingerprint and feature list are stored; the current fingerprint is not an input-content checksum. |
+| **Safe model updates** | Champion/challenger: the registry changes only if the new model wins on the same validation month; test metrics are reporting-only. A test proves a weaker model does not overwrite it. |
+| **API contract** | Pydantic validation on every field: zone ids 1 to 265, distance 0.1 to 100 miles, passengers 1 to 6, NYC local wall-clock ISO timestamps without an offset. Invalid-input cases return 422. Batch limited to 1,000. |
 | **Uncertainty** | Every prediction returns a range (10th to 90th percentile), calibrated on validation, 83.7% coverage on the unseen test month. |
 | **Operations** | `/health`, `/ready` (503 until a model loads), `/metrics` in Prometheus format, `/model` returns the model card numbers, Docker image runs as a non-root user, compose file adds Prometheus. |
 | **Drift monitoring** | `/drift` computes the Population Stability Index per feature over recent requests. See the model card for measured values. |
-| **Tests and CI** | 28 tests (data cleaning, model quality, API, drift, champion/challenger). CI lints, tests, loads the committed model, load-tests the real server and builds and calls the Docker image. |
+| **Tests and CI** | Tests cover data cleaning, split isolation, model behavior, API validation, drift and champion/challenger selection. CI lints, tests, loads the committed model, load-tests the real server and builds and calls the Docker image. |
 
 ## Try it
 
@@ -42,7 +42,7 @@ curl -s localhost:8000/predict -H 'content-type: application/json' \
   -d '{"pickup_zone":161,"dropoff_zone":237,"pickup_time":"2023-10-14T18:30:00","distance_miles":2.4}'
 # {"predicted_minutes":..., "low_minutes":..., "high_minutes":..., "model_version":"taxi-trip-duration-579ee2ae22a7"}
 
-pytest -q                                   # 28 tests, about 10 s
+pytest -q                                   # regression and sample-model tests
 docker compose up --build                   # API on :8000, Prometheus on :9090
 ```
 
@@ -73,3 +73,10 @@ One worker is CPU bound at about 250 requests per second (each request builds a 
 - **Not deployed to a cloud.** It runs locally and in Docker.
 
 Full numbers, segments and limits: [docs/MODEL_CARD.md](docs/MODEL_CARD.md).
+
+## Evaluation and API boundaries
+Invalid or reversed month ranges fail before loading data. Training, validation and test months must be strictly ordered and non-overlapping. Source paths are parameterized, and rows whose pickup month differs from the requested file month are excluded before sampling.
+
+Model selection and early stopping share validation data; the final future test month is reserved for reporting. Repeatedly inspecting that report while tuning would still overfit it. The committed model and historical full-data metrics were not retrained by this review, and the earlier promotion policy used the test month. Sample-based CI tests verify behavior, not the published 3.35-million-trip performance claim.
+
+`pickup_time` must be NYC local wall time without a timezone suffix, matching training features; offset-aware timestamps are rejected instead of silently using the wrong hour. Unknown routes share one metrics label, preventing arbitrary 404 paths from creating unlimited series. The file registry remains a local demonstration; multi-file promotion is not an atomic production registry.
