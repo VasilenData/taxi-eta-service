@@ -29,6 +29,7 @@ def test_predict_returns_ordered_range(client):
     {"pickup_zone": 0}, {"pickup_zone": 266}, {"dropoff_zone": -1}, {"distance_miles": 0},
     {"distance_miles": 5000}, {"passengers": 0}, {"passengers": 9}, {"pickup_time": "yesterday"},
     {"distance_miles": "far"},
+    {"pickup_time": "2023-10-14T18:30:00Z"}, {"pickup_time": "2023-10-14T18:30:00+02:00"},
 ])
 def test_invalid_requests_are_rejected_with_422(client, patch):
     assert client.post("/predict", json={**GOOD, **patch}).status_code == 422
@@ -68,3 +69,11 @@ def test_metrics_count_requests(client):
 
 def test_model_card_has_metrics_fields(client):
     assert "interval_ratio" in client.get("/model").json()
+
+
+def test_unmatched_urls_share_a_bounded_metric_label(client):
+    for number in range(20):
+        assert client.get(f"/missing-{number}").status_code == 404
+    metrics = client.get("/metrics").text
+    assert 'path="<unmatched>",status="404"} 20' in metrics
+    assert "missing-" not in metrics
