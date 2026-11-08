@@ -1,4 +1,4 @@
-"""Load and clean TLC yellow-taxi files into a training frame. Same validity rules as nyc-taxi-data-platform."""
+"""Load and clean TLC yellow-taxi files using this service's training-specific validity rules."""
 from __future__ import annotations
 
 from pathlib import Path
