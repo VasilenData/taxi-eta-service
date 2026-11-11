@@ -2,17 +2,17 @@
 
 [![CI](https://github.com/VasilenData/taxi-eta-service/actions/workflows/ci.yml/badge.svg)](https://github.com/VasilenData/taxi-eta-service/actions/workflows/ci.yml)
 
-An end-to-end machine learning service: data, training, experiment tracking, a model registry with a promotion rule, a validated REST API, monitoring and drift detection, a container and CI. Predicts how long a NYC yellow-taxi trip will take.
+A booking-time trip-duration model with a validated REST API, independent interval calibration, a versioned model bundle, drift monitoring, Docker and CI. The default model uses pickup/drop-off zones, pickup hour and weekday, and passenger count; it does not require recorded trip distance.
 
-**Historical October 2023 evaluation (3.35 million trips): mean absolute error 3.52 minutes against 9.33 for a distance-and-speed baseline, 62% lower.** The earlier promotion rule used test-month scores; this stored artifact has not been retrained or reevaluated under the current validation-only rule. These figures also use TLC's recorded taximeter distance, not a planned-route estimate available at booking.
+**Verified 11 November 2026: 4.07-minute MAE on 200,000 held-out June 2023 trips, versus 5.57 minutes for a training-only route/hour/global median baseline (27.02% lower).** May-calibrated nominal 80% intervals covered 80.59% of June targets, with mean width 14.21 minutes. These are bounded samples of eligible completed TLC trips, not live traffic or production performance. [Inspect the report and every paired prediction](reports/booking-2023-h1/index.html).
 
 ```mermaid
 flowchart LR
-    D[TLC parquet<br/>Jan-Oct 2023] --> T[train.py<br/>time-based split]
-    T --> ML[(MLflow<br/>params, metrics, artifacts)]
-    T --> G{Challenger beats<br/>champion?}
-    G -- yes --> R[models/current<br/>model + metadata + drift baseline]
-    G -- no --> X[keep champion]
+    D[TLC parquet<br/>Jan-Jun 2023] --> T[booking.py<br/>fit / validation / calibration / test]
+    T --> E[Paired predictions<br/>hashes and evaluation report]
+    T --> G{Validation MAE beats<br/>training-only baseline?}
+    G -- yes --> R[Verified atomic bundle<br/>model + metadata + drift baseline]
+    G -- no --> X[Keep candidate report<br/>do not promote]
     R --> A[FastAPI<br/>/predict /predict/batch]
     A --> M[/metrics Prometheus/]
     A --> DR[/drift PSI vs training/]
@@ -22,15 +22,37 @@ flowchart LR
 
 | Concern | What is built |
 |---|---|
-| **Current evaluation workflow** | Train on Jan to Aug, stop early and select on September, report on October. The CLI enforces disjoint chronological month ranges and excludes out-of-period pickup rows. |
-| **A baseline to beat** | A distance divided by median hourly speed rule. A test asserts the model beats it. |
-| **Reproducibility** | MLflow run per training (params, metrics, model files). A split/row-count configuration fingerprint and feature list are stored; the current fingerprint is not an input-content checksum. |
-| **Safe model updates** | Champion/challenger: the registry changes only if the new model wins on the same validation month; test metrics are reporting-only. A test proves a weaker model does not overwrite it. |
-| **API contract** | Pydantic validation on every field: zone ids 1 to 265, distance 0.1 to 100 miles, passengers 1 to 6, NYC local wall-clock ISO timestamps without an offset. Invalid-input cases return 422. Batch limited to 1,000. |
-| **Uncertainty** | Every prediction returns a range (10th to 90th percentile), calibrated on validation; recorded October coverage was 83.7%. |
+| **Current evaluation workflow** | Fit January-March, early-stop and qualify on April, calibrate on May, report June once. Source-row identities and completed-label cutoffs enforce phase boundaries. |
+| **A baseline to beat** | Train-only route median with minimum support 20, falling back to hourly/global medians. Validation MAE qualifies the learned candidate; final test never controls promotion. |
+| **Reproducibility** | MLflow run per training (params, metrics, model files). Current training hashes ordered input values, schema and dtypes, and records a separate SHA-256 of the trained model. Legacy stored artifacts retain their original configuration-only fingerprints. The booking workflow additionally hashes source files, phase frames and code. |
+| **Safe model updates** | Atomic model/metadata bundle; the measured booking bundle is promoted byte-for-byte to the default registry. Its validation gate is a baseline comparison. The separate legacy workflow retains champion/challenger tests. |
+| **API contract** | Pydantic validation on every field: zone ids 1 to 265, passengers 1 to 6; optional legacy distance 0.1 to 100 miles, NYC local wall-clock ISO timestamps without an offset. Invalid-input cases return 422. Batch limited to 1,000. |
+| **Uncertainty** | A separate May sample calibrates error-ratio intervals. June coverage is 80.59% for nominal 80%; coverage under future shift is not guaranteed. |
 | **Operations** | `/health`, `/ready` (503 until a model loads), `/metrics` in Prometheus format, `/model` returns the model card numbers, Docker image runs as a non-root user, compose file adds Prometheus. |
 | **Drift monitoring** | `/drift` computes the Population Stability Index per feature over recent requests. See the model card for measured values. |
 | **Tests and CI** | Tests cover data cleaning, split isolation, model behavior, API validation, drift and champion/challenger selection. CI lints, tests, loads the committed model, load-tests the real server and builds and calls the Docker image. |
+
+## Booking-time model and independent calibration
+
+A separate [booking workflow](docs/BOOKING.md) excludes recorded trip distance entirely. It trains on January–March,
+uses April only for early stopping and the baseline gate, calibrates uncertainty on May, and assesses June once.
+Only pickup/drop-off zones, pickup hour, weekday and passenger count enter the model. A training-only route-median
+baseline falls back to hourly/global medians for sparse or unseen routes.
+
+The command writes paired per-trip predictions, source/frame/model/code hashes, failure slices and a static report.
+Its learned model is eligible for the separate `models/booking` registry only if validation MAE beats the baseline;
+June test results never control that gate. The [dated report](reports/booking-2023-h1/index.html) records the measured booking-model results. Historical distance-assisted scores above are not booking-time accuracy claims.
+
+```bash
+PYTHONPATH=src python -m tripeta.booking --data-dir /path/to/taxi \
+  --output reports/booking-2023-h1 --registry models/booking \
+  --train-sample 100000 --evaluation-sample 200000 --seed 42
+TRIPETA_MODEL_DIR=models/booking PYTHONPATH=src uvicorn tripeta.api:app --port 8000
+```
+
+With a booking model loaded, `/predict` accepts requests without `distance_miles` and ignores that field if supplied.
+Legacy distance models still reject missing distance with HTTP 422. Prediction and drift feature lists follow the
+loaded booster, and model versions use the model-content hash when available.
 
 ## Try it
 
@@ -39,22 +61,29 @@ pip install -r requirements-dev.txt
 PYTHONPATH=src uvicorn tripeta.api:app --port 8000
 
 curl -s localhost:8000/predict -H 'content-type: application/json' \
-  -d '{"pickup_zone":161,"dropoff_zone":237,"pickup_time":"2023-10-14T18:30:00","distance_miles":2.4}'
-# {"predicted_minutes":..., "low_minutes":..., "high_minutes":..., "model_version":"taxi-trip-duration-579ee2ae22a7"}
+  -d '{"pickup_zone":161,"dropoff_zone":237,"pickup_time":"2023-06-14T18:30:00","passengers":1}'
+# {"predicted_minutes":..., "low_minutes":..., "high_minutes":..., "model_version":"taxi-booking-duration-f7e0d7de3f1b"}
 
 pytest -q                                   # regression and sample-model tests
 docker compose up --build                   # API on :8000, Prometheus on :9090
 ```
 
-Retrain on the full TLC files (the trained model is already committed in `models/current`):
+The separate historical distance-assisted training workflow remains available; use a separate candidate registry:
 
 ```bash
-PYTHONPATH=src python -m tripeta.train --data-dir /path/to/taxi --train 2023-01..2023-08 --valid 2023-09 --test 2023-10
+PYTHONPATH=src python -m tripeta.train --data-dir /path/to/taxi --train 2023-01..2023-08 --valid 2023-09 --test 2023-10 --registry models/legacy-candidate
 ```
 
-## Measured serving performance
+## Historical distance-assisted experiment
 
-Real uvicorn server, real HTTP, one `/predict` call per request, same 17-core VM as training (`python scripts/loadtest.py`). The load generator is itself Python and shares the machine, so treat throughput as a floor.
+October 2023 evaluation on 3.35 million trips recorded MAE 3.52 minutes versus 9.33 for a distance-and-speed baseline.
+It used realized taximeter distance and an older test-driven promotion rule, so it is not booking-time accuracy evidence.
+The original `models/current/model.txt` and `metadata.json` remain unchanged for inspection; the new `bundle.json` takes
+precedence for serving. [Historical model card](docs/MODEL_CARD.md).
+
+## Historical serving performance
+
+These measurements predate the booking model. Real uvicorn server, real HTTP, one `/predict` call per request, same 17-core VM as historical training (`python scripts/loadtest.py`). The load generator is itself Python and shares the machine, so treat throughput as a floor.
 
 | Setup | Throughput | p50 | p95 | p99 |
 |---|---|---|---|---|
@@ -66,18 +95,30 @@ One worker is CPU bound at about 250 requests per second (each request builds a 
 
 ## Decisions and limits
 
-- **Distance is an input.** API callers supply it. Historical training and evaluation use the taximeter's recorded trip distance; no route planner is integrated, and accuracy with a planned-route estimate at booking has not been evaluated.
-- **LightGBM, not a neural network.** On tabular data with a few categorical columns it trains in 31 seconds and serves in milliseconds. A neural network would add cost without a clear gain here.
+- **Distance is an input to the legacy model.** API callers supply it to that model; the separate booking model excludes it. Historical training and evaluation use the taximeter's recorded trip distance; no route planner is integrated, and accuracy with a planned-route estimate at booking has not been evaluated.
+- **LightGBM for tabular inputs.** The recorded booking fit took 5.00 seconds with four threads in this run; that excludes loading, verification and report generation. Historical serving timings above have not been repeated for this model.
 - **File registry, not a registry server.** `models/current` plus MLflow runs is enough for one model. The champion/challenger rule is the part that matters, and it is separate from the storage.
 - **Drift needs traffic.** `/drift` returns `insufficient_data` until 200 requests have arrived, and keeps the last 5,000 in memory only. A production setup would write requests to a log or topic.
 - **Not deployed to a cloud.** It runs locally and in Docker.
 
 Full numbers, segments and limits: [docs/MODEL_CARD.md](docs/MODEL_CARD.md).
 
+## One operational observation
+
+```bash
+python scripts/probe.py http://localhost:8000 --output reports/probe-latest.json
+```
+
+The probe makes four sequential HTTP calls to `/health`, `/ready`, `/model` and `/predict`. It verifies the committed
+model hash, booking feature contract, readiness and an ordered prediction interval without supplying distance.
+Each call has a five-second timeout and latency budget; a failed observation still writes a timestamped JSON report
+and exits nonzero. The manual [probe workflow](.github/workflows/probe.yml) retains the report for 14 days. There is
+no schedule, uptime percentage or latency-percentile claim. Source-file and evaluation evidence remain separate.
+
 ## Evaluation and API boundaries
 Invalid or reversed month ranges fail before loading data. Training, validation and test months must be strictly ordered and non-overlapping. Source paths are parameterized, and rows whose pickup month differs from the requested file month are excluded before sampling.
 
-Model selection and early stopping share validation data; the final future test month is reserved for reporting. Repeatedly inspecting that report while tuning would still overfit it. The committed model and historical full-data metrics were not retrained by this review, and the earlier promotion policy used the test month. Sample-based CI tests verify behavior, not the published 3.35-million-trip performance claim.
+In the legacy training command, model selection, early stopping and interval calibration share validation data; the final future test month is reserved for reporting. The default booking workflow instead has an independent calibration month. Repeatedly inspecting that report while tuning would still overfit it. The original distance-assisted model files and historical full-data metrics remain unchanged; their earlier promotion policy used the test month. The separate booking model was newly trained and verified as reported above. Sample-based CI tests verify behavior, not the published 3.35-million-trip performance claim.
 
 `pickup_time` must be NYC local wall time without a timezone suffix, matching training features; offset-aware timestamps are rejected instead of silently using the wrong hour. Unknown routes share one metrics label, preventing arbitrary 404 paths from creating unlimited series.
 
