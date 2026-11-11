@@ -41,11 +41,11 @@ baseline falls back to hourly/global medians for sparse or unseen routes.
 
 The command writes paired per-trip predictions, source/frame/model/code hashes, failure slices and a static report.
 Its learned model is eligible for the separate `models/booking` registry only if validation MAE beats the baseline;
-June test results never control that gate. The [dated report](reports/booking-2023-h1/index.html) records the measured booking-model results. Historical distance-assisted scores above are not booking-time accuracy claims.
+June test results never control that gate. The [dated report](reports/booking-2023-h1/index.html) records the measured booking-model results. The historical distance-assisted experiment below remains separate from these booking-time results.
 
 ```bash
 PYTHONPATH=src python -m tripeta.booking --data-dir /path/to/taxi \
-  --output reports/booking-2023-h1 --registry models/booking \
+  --output reports/local-booking-run --registry models/booking \
   --train-sample 100000 --evaluation-sample 200000 --seed 42
 TRIPETA_MODEL_DIR=models/booking PYTHONPATH=src uvicorn tripeta.api:app --port 8000
 ```
@@ -99,7 +99,7 @@ One worker is CPU bound at about 250 requests per second (each request builds a 
 - **LightGBM for tabular inputs.** The recorded booking fit took 5.00 seconds with four threads in this run; that excludes loading, verification and report generation. Historical serving timings above have not been repeated for this model.
 - **File registry, not a registry server.** `models/current` plus MLflow runs is enough for one model. The champion/challenger rule is the part that matters, and it is separate from the storage.
 - **Drift needs traffic.** `/drift` returns `insufficient_data` until 200 requests have arrived, and keeps the last 5,000 in memory only. A production setup would write requests to a log or topic.
-- **Not deployed to a cloud.** It runs locally and in Docker.
+- **Railway trial demo.** [API documentation](https://taxi-booking-api-demo.up.railway.app/docs) is publicly hosted on a Railway trial. A [dated probe on 11 November 2026](https://vasilendata.github.io/labs/service/probe-2026-11-11.json) observed four successful endpoint/contract checks, including a distance-free prediction with the verified booking model. This is one observation, not continuous monitoring, a latency percentile or an uptime/SLA claim; trial availability can end. Local and Docker setup remain available.
 
 Full numbers, segments and limits: [docs/MODEL_CARD.md](docs/MODEL_CARD.md).
 
