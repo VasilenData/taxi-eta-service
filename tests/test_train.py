@@ -60,7 +60,7 @@ def test_promotion_uses_validation_even_when_test_prefers_the_champion(tmp_path,
     registry = tmp_path / "registry"
     registry.mkdir()
     (registry / "model.txt").write_text("fixture")
-    challenger = SimpleNamespace(best_iteration=1)
+    challenger = SimpleNamespace(best_iteration=1, model_to_string=lambda: "challenger-model-fixture")
     champion = object()
 
     def frame(folder, months, sample):
