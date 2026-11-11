@@ -29,12 +29,15 @@ class TripRequest(BaseModel):
     pickup_zone: int = Field(ge=zmin, le=zmax, description="TLC taxi zone id of the pickup")
     dropoff_zone: int = Field(ge=zmin, le=zmax, description="TLC taxi zone id of the drop-off")
     pickup_time: datetime = Field(description="ISO 8601 local pickup time, e.g. 2023-10-14T18:30:00")
-    distance_miles: float = Field(ge=dmin, le=dmax, description="Planned route distance")
+    distance_miles: float | None = Field(default=None, ge=dmin, le=dmax,
+                                         description="Required by legacy distance models; ignored by booking models")
     passengers: int = Field(default=1, ge=pmin, le=pmax)
 
     @field_validator("distance_miles")
     @classmethod
-    def finite(cls, v: float) -> float:
+    def finite(cls, v: float | None) -> float | None:
+        if v is None:
+            return v
         if v != v or v in (float("inf"), float("-inf")):
             raise ValueError("distance must be a finite number")
         return v
@@ -108,7 +111,7 @@ def create_app(model_dir: Path | None = None) -> FastAPI:
 
     def version() -> str:
         m = state["meta"]
-        return f"{m['name']}-{m['data_fingerprint']}"
+        return f"{m['name']}-{m.get('model_sha256', m['data_fingerprint'])[:12]}"
 
     @app.middleware("http")
     async def timing(request: Request, call_next):
@@ -123,12 +126,14 @@ def create_app(model_dir: Path | None = None) -> FastAPI:
     def run(trips: list[TripRequest]) -> list[Prediction]:
         if state["booster"] is None:
             raise HTTPException(503, "model not loaded")
+        if "distance_miles" in state["booster"].feature_name() and any(t.distance_miles is None for t in trips):
+            raise HTTPException(422, "distance_miles is required by the loaded legacy model")
         df = pd.DataFrame([{"pickup_zone": t.pickup_zone, "dropoff_zone": t.dropoff_zone, "hour": t.pickup_time.hour,
                             "dow": t.pickup_time.weekday(), "distance_miles": t.distance_miles,
                             "passengers": t.passengers} for t in trips])
         pred = model.predict(state["booster"], df)
         lo, hi = state["meta"]["interval_ratio"]
-        recent.extend(df.to_dict("records"))
+        recent.extend(df[state["booster"].feature_name()].to_dict("records"))
         metrics.predictions += len(trips)
         return [Prediction(predicted_minutes=round(float(p), 1), low_minutes=round(float(p * lo), 1),
                            high_minutes=round(float(p * hi), 1), model_version=version()) for p in pred]
@@ -157,8 +162,10 @@ def create_app(model_dir: Path | None = None) -> FastAPI:
         if state["meta"] is None:
             raise HTTPException(503, "model not loaded")
         m = state["meta"]
-        return {k: m[k] for k in ("name", "trained_at", "train_months", "test_months", "train_rows", "features",
-                                   "metrics", "segments", "interval_ratio", "interval_coverage", "data_fingerprint")}
+        keys = ("name", "trained_at", "train_months", "valid_months", "calibration_months", "test_months", "train_rows",
+                "features", "metrics", "segments", "interval_ratio", "interval_coverage", "data_fingerprint",
+                "model_sha256", "prediction_time", "validation_gate_passed")
+        return {k: m[k] for k in keys if k in m}
 
     @app.get("/drift")
     def drift_report():

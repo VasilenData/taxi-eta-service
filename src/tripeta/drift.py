@@ -10,13 +10,18 @@ NUMERIC_BINS = {"distance_miles": [0, 0.5, 1, 1.5, 2, 3, 5, 8, 12, 20, 101],
                 "hour": list(range(0, 25)), "dow": list(range(0, 8)), "passengers": [1, 2, 3, 4, 5, 6, 7]}
 
 
-def baseline_profile(df) -> dict:
+def baseline_profile(df, features: list[str] | None = None) -> dict:
     """Training-time histogram per feature, stored in the model metadata."""
     prof = {}
+    selected = set(df.columns if features is None else features)
     for col, edges in NUMERIC_BINS.items():
+        if col not in selected:
+            continue
         counts, _ = np.histogram(df[col], bins=edges)
         prof[col] = {"edges": edges, "share": (counts / counts.sum()).tolist()}
     for col in ("pickup_zone", "dropoff_zone"):
+        if col not in selected:
+            continue
         vc = df[col].value_counts(normalize=True)
         prof[col] = {"top": {int(k): float(v) for k, v in vc.head(50).items()}}
     return prof

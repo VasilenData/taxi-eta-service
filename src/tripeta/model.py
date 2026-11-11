@@ -41,22 +41,33 @@ class Baseline:
         return (df.distance_miles / speeds * 60.0).to_numpy()
 
 
-def _frame(df: pd.DataFrame) -> pd.DataFrame:
-    x = df[FEATURES].copy()
+def _frame(df: pd.DataFrame, features: list[str] | None = None) -> pd.DataFrame:
+    selected = FEATURES if features is None else features
+    if not selected or len(selected) != len(set(selected)) or set(selected) - set(FEATURES):
+        raise ValueError("unsupported model feature contract")
+    x = df[selected].copy()
     for c in CATEGORICAL:
+        if c not in selected:
+            continue
         x[c] = pd.Categorical(x[c], categories=range(1, 266))
     return x
 
 
-def train(df: pd.DataFrame, valid: pd.DataFrame, rounds: int = 600) -> lgb.Booster:
-    dtr = lgb.Dataset(_frame(df), np.log1p(df.duration_min), categorical_feature=CATEGORICAL)
-    dva = lgb.Dataset(_frame(valid), np.log1p(valid.duration_min), reference=dtr)
-    return lgb.train(PARAMS, dtr, rounds, valid_sets=[dva],
+def train(df: pd.DataFrame, valid: pd.DataFrame, rounds: int = 600,
+          features: list[str] | None = None, threads: int | None = None) -> lgb.Booster:
+    if threads is not None and (type(threads) is not int or threads < 1):
+        raise ValueError("threads must be a positive integer")
+    params = PARAMS if threads is None else {**PARAMS, "num_threads": threads}
+    selected = FEATURES if features is None else features
+    dtr = lgb.Dataset(_frame(df, selected), np.log1p(df.duration_min),
+                      categorical_feature=[c for c in CATEGORICAL if c in selected])
+    dva = lgb.Dataset(_frame(valid, selected), np.log1p(valid.duration_min), reference=dtr)
+    return lgb.train(params, dtr, rounds, valid_sets=[dva],
                      callbacks=[lgb.early_stopping(40, verbose=False)])
 
 
 def predict(booster: lgb.Booster, df: pd.DataFrame) -> np.ndarray:
-    return np.expm1(booster.predict(_frame(df), num_iteration=booster.best_iteration or None))
+    return np.expm1(booster.predict(_frame(df, booster.feature_name()), num_iteration=booster.best_iteration or None))
 
 
 def save(booster: lgb.Booster, meta: dict, folder: Path) -> None:
