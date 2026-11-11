@@ -1,0 +1,74 @@
+{
+  "baseline.json": {
+    "sha256": "1190f72a82f355111865b478cbec01066fc2f5b191e7f5fa6a6e85974e06332d",
+    "bytes": 75512
+  },
+  "index.html": {
+    "sha256": "7e68fc27453bf721383c8df3be257a551539283bd95f9e4445c31a3a1afc0df1",
+    "bytes": 3085
+  },
+  "model/bundle.json": {
+    "sha256": "8c76eb241864c292ec84796e6e12e801f54dfcc3fb81e099d577afdd4b60a5a6",
+    "bytes": 4622926
+  },
+  "predictions_calibration.csv.gz": {
+    "sha256": "bf3787409d89c862910b878e3d4544a7f54b7edf959f2e60ba126c620be60adf",
+    "bytes": 12623728
+  },
+  "predictions_test.csv.gz": {
+    "sha256": "09f7a684318778c9a34b3deca3725b01b183e85b89a79872b1c833304fed4dd0",
+    "bytes": 12631184
+  },
+  "predictions_validation.csv.gz": {
+    "sha256": "e606b29d5418d679d287b425cca45d38683a2d369bc295f8a8f06211ab1ada2b",
+    "bytes": 12629231
+  },
+  "presentation-edit.json": {
+    "sha256": "239e1457caa8582c2fb201005eba1f6b54414eca0f5552da2266992e4c9a3d70",
+    "bytes": 2154
+  },
+  "provenance/index_before_utf8_fix.html": {
+    "sha256": "f5762e79164adcad5d493cc8590eb689a692335fe091091d30f84062195fbb35",
+    "bytes": 3069
+  },
+  "provenance/training_source/__init__.py": {
+    "sha256": "68ea7d41d847d9fe79e87cb41adc7703f252b668a850679a4586d08748063784",
+    "bytes": 110
+  },
+  "provenance/training_source/api.py": {
+    "sha256": "a4255fee43b8645f7aed0b6e44548b8b6f3c24ae8674b4784b17479d87162816",
+    "bytes": 8038
+  },
+  "provenance/training_source/booking.py": {
+    "sha256": "8bcd0da4c97d7821d9f59988528da18279841e4a1edbca3a3651c36790943a97",
+    "bytes": 19890
+  },
+  "provenance/training_source/data.py": {
+    "sha256": "5f5330180c733d870e12423a78e27d8c3e466495cbf4d228734ff6bcc2bc2118",
+    "bytes": 3839
+  },
+  "provenance/training_source/drift.py": {
+    "sha256": "90d078edf407a8bbfe8b843adccbcd4999ee623c370b5138eaa1197c97364bae",
+    "bytes": 2437
+  },
+  "provenance/training_source/evidence.py": {
+    "sha256": "c917426388fbe38ffb5b55b955509f155262cd8e8f220eda36053762bdcf49fc",
+    "bytes": 1436
+  },
+  "provenance/training_source/model.py": {
+    "sha256": "2ffd3c7a77a58fe8e1da2e6b25e9a7a6569c1b1dfee19aeb4963a8c44fac6547",
+    "bytes": 5170
+  },
+  "provenance/training_source/train.py": {
+    "sha256": "ab5bfdb65d1a4a1c700374c8b4c4c785651c96db3c4f79f218f55bf3c7af6017",
+    "bytes": 6900
+  },
+  "report.json": {
+    "sha256": "3e883ec6c377530734d0a7fdc05a6a07c26f01a36fc2c69d3d4ceb9928c5a5be",
+    "bytes": 18613
+  },
+  "slices.csv": {
+    "sha256": "ed0098c03cc527defc8fb792857a298456579f7efed2e11622747f0fbe023d18",
+    "bytes": 3971
+  }
+}
