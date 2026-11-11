@@ -62,7 +62,7 @@ pip install -r requirements-dev.txt
 PYTHONPATH=src python -m tripeta.booking --data-dir /path/to/taxi \
   --train 2023-01..2023-03 --valid 2023-04 --calibration 2023-05 --test 2023-06 \
   --train-sample 100000 --evaluation-sample 200000 --seed 42 --rounds 600 --threads 4 \
-  --output reports/booking-2023-h1 --registry models/booking
+  --output reports/local-booking-run --registry models/booking
 ```
 
 Choose a new output directory for each run; previous evidence cannot be overwritten. The report includes source-file SHA-256 and counts, phase-frame fingerprints, Python/package versions, code hashes, model content SHA-256, model parameters, interval ratios, aggregate metrics and route/hour/passenger slices. Compressed CSVs preserve every validation, calibration and test prediction with its source-row identity. Validation interval columns use the later calibration fit and are diagnostic outputs, never selection inputs.
