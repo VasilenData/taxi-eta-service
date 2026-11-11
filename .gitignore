@@ -4,3 +4,8 @@ models/_last_run/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# Local candidate copy; the verified default and report bundle are committed.
+models/booking/
+reports/.booking-*/
+reports/probe-*.json

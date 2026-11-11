@@ -8,6 +8,7 @@ import duckdb
 import pandas as pd
 
 FEATURES = ["pickup_zone", "dropoff_zone", "hour", "dow", "distance_miles", "passengers"]
+BOOKING_FEATURES = ["pickup_zone", "dropoff_zone", "hour", "dow", "passengers"]
 CATEGORICAL = ["pickup_zone", "dropoff_zone"]
 TARGET = "duration_min"
 
@@ -22,11 +23,15 @@ def validate_month(month: str) -> str:
 
 
 def load_month(path: str | Path, sample: int | None = None, seed: int = 0,
-               expected_month: str | None = None) -> pd.DataFrame:
+               expected_month: str | None = None, *, include_identity: bool = False,
+               label_before: str | None = None) -> pd.DataFrame:
     """Clean rows of one parquet file. Trips are kept only if they could be real."""
     lo, hi = LIMITS["distance_miles"]
     if sample is not None and (isinstance(sample, bool) or not isinstance(sample, int) or sample < 1):
         raise ValueError("sample must be a positive integer or None")
+    identity = (", file_row_number::bigint as source_row, tpep_pickup_datetime as pickup_at, "
+                "tpep_dropoff_datetime as dropoff_at") if include_identity else ""
+    reader = "read_parquet(?, file_row_number=true)" if include_identity else "read_parquet(?)"
     q = f"""
     select
         PULocationID::int as pickup_zone, DOLocationID::int as dropoff_zone,
@@ -35,8 +40,8 @@ def load_month(path: str | Path, sample: int | None = None, seed: int = 0,
         trip_distance::double as distance_miles,
         least(greatest(coalesce(passenger_count, 1), 1), 6)::int as passengers,
         date_diff('second', tpep_pickup_datetime, tpep_dropoff_datetime) / 60.0 as duration_min,
-        strftime(tpep_pickup_datetime, '%Y-%m') as month
-    from read_parquet(?)
+        strftime(tpep_pickup_datetime, '%Y-%m') as month{identity}
+    from {reader}
     where tpep_dropoff_datetime > tpep_pickup_datetime
       and date_diff('second', tpep_pickup_datetime, tpep_dropoff_datetime) between 60 and 4 * 3600
       and trip_distance between {lo} and {hi}
@@ -48,8 +53,14 @@ def load_month(path: str | Path, sample: int | None = None, seed: int = 0,
         validate_month(expected_month)
         q += " and strftime(tpep_pickup_datetime, '%Y-%m') = ?"
         parameters.append(expected_month)
+    if label_before is not None:
+        q += " and tpep_dropoff_datetime < ?"
+        parameters.append(pd.Timestamp(label_before).to_pydatetime())
     if sample is not None:
-        q = f"select * from ({q}) using sample {int(sample)} rows (reservoir, {int(seed)})"
+        if include_identity:
+            q = f"select * from ({q}) order by hash(source_row, {int(seed)}), source_row limit {int(sample)}"
+        else:
+            q = f"select * from ({q}) using sample {int(sample)} rows (reservoir, {int(seed)})"
     return duckdb.sql(q, params=parameters).df()
 
 

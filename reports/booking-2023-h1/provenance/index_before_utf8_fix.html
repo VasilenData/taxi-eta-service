@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Taxi booking-time evaluation</title><style>body{background:#f5f7fa;color:#172333;font:17px/1.6 system-ui;
+max-width:980px;margin:50px auto;padding:0 24px}h1{line-height:1.15}table{width:100%;border-collapse:collapse;
+background:white}td,th{padding:12px;border-bottom:1px solid #dce3eb;text-align:left}a{color:#00776d}
+.tag{color:#00776d;font-weight:700}section{margin:32px 0}</style>
+<p class="tag">TEMPORAL EVALUATION Â· BOOKING FEATURES ONLY</p><h1>Trip duration before the ride</h1>
+<p>Uses pickup/drop-off zones, pickup hour and weekday, and passenger count. Recorded trip distance is excluded
+from model inputs. Historical TLC labels are retrospective; this is not a live routing or traffic system.</p>
+<section><h2>Untouched future test</h2><table><tr><th>Model</th><th>MAE</th><th>Interval coverage</th>
+<th>Mean interval width</th></tr><tr><td>lightgbm</td><td>4.068 min</td><td>80.6%</td><td>14.21 min</td></tr><tr><td>baseline</td><td>5.574 min</td><td>80.7%</td><td>18.93 min</td></tr></table><p>The validation-only learned-model gate passed.
+Final test rows do not decide model selection, interval calibration or registry promotion.</p></section>
+<section><h2>Four distinct phases</h2><p>Train: 2023-01, 2023-02, 2023-03;
+validation: 2023-04; calibration:
+2023-05; test: 2023-06.</p>
+<p>Early stopping uses validation only. The 10th/90th ratio interval is fitted on calibration, expanded to contain
+the point prediction, and assessed on test. Its nominal 80% level is not a coverage guarantee under time shift.</p></section>
+<section><h2>Source and sample coverage</h2><table><tr><th>Month</th><th>Raw source rows</th><th>Sampled eligible trips</th>
+</tr><tr><td>2023-01</td><td>3,066,766</td><td>100,000</td></tr><tr><td>2023-02</td><td>2,913,955</td><td>100,000</td></tr><tr><td>2023-03</td><td>3,403,766</td><td>100,000</td></tr><tr><td>2023-04</td><td>3,288,250</td><td>200,000</td></tr><tr><td>2023-05</td><td>3,513,649</td><td>200,000</td></tr><tr><td>2023-06</td><td>3,307,234</td><td>200,000</td></tr></table><p>Source row IDs identify paired predictions. Eligibility filters use completed-trip
+duration, fare and recorded distance; evaluation therefore applies to the eligible-trip cohort, not all requests.
+Targets ending beyond the phase boundary are excluded before sampling. Monthly public data arrives after travel.</p></section>
+<section><h2>Inspect the evidence</h2><p><a href="report.json">Protocol, metrics and source hashes</a> Â·
+<a href="predictions_test.csv.gz">Every held-out prediction (gzip CSV)</a> Â·
+<a href="slices.csv">Route/hour/passenger slices</a> Â· <a href="manifest.json">Artifact checksums</a></p>
+<p>Training-only baseline: route median for routes with at least 20 samples, otherwise hourly median, then global
+median. No traffic, route planner, causal impact or production uptime claim. Historical distance-assisted scores
+remain a separate experiment.</p></section></html>

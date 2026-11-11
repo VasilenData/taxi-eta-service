@@ -18,6 +18,7 @@ import numpy as np
 
 from . import __version__, drift, model
 from .data import FEATURES, LIMITS, load_months, validate_month
+from .evidence import data_fingerprint
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -86,13 +87,14 @@ def run(args) -> dict:
     }
     metrics["mae_improvement_vs_baseline"] = 1 - metrics["test_mae_min"] / metrics["baseline_mae_min"]
 
-    fingerprint = hashlib.sha256(json.dumps(
-        {"train": tr_m, "valid": va_m, "rows": [len(train_df), len(valid_df)], "features": FEATURES}).encode()).hexdigest()[:12]
+    fingerprint = data_fingerprint({"train": train_df, "validation": valid_df})
+    model_sha256 = hashlib.sha256(booster.model_to_string().encode("utf-8")).hexdigest()
     meta = {
         "name": "taxi-trip-duration", "package_version": __version__,
         "trained_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "train_months": tr_m, "valid_months": va_m, "test_months": te_m,
         "train_rows": len(train_df), "test_rows": len(test_df), "data_fingerprint": fingerprint,
+        "data_fingerprint_format": "training-csv-v1", "model_sha256": model_sha256,
         "interval_ratio": interval, "interval_coverage": covered,
         "features": FEATURES, "limits": LIMITS, "metrics": metrics, "fit_seconds": round(fit_s, 1),
         "segments": segment_report(test_df, pred), "drift_baseline": drift.baseline_profile(train_df),
