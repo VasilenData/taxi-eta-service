@@ -1,3 +1,5 @@
+> Historical distance-assisted model card. These scores use recorded taximeter distance and are not the default booking-model results. See [the current booking protocol and dated results](BOOKING.md).
+
 # Model card: taxi trip duration
 
 **What it predicts:** minutes from pickup to drop-off for a NYC yellow-taxi trip, given pickup zone, drop-off zone, pickup time, supplied distance and passengers. Historical training and evaluation use recorded taximeter distance.
