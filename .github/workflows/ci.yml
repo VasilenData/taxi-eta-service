@@ -23,8 +23,11 @@ jobs:
           from tripeta.api import app
           c = TestClient(app)
           assert c.get("/ready").status_code == 200
-          r = c.post("/predict", json={"pickup_zone": 161, "dropoff_zone": 237, "pickup_time": "2023-10-14T18:30:00", "distance_miles": 2.4})
+          trip = {"pickup_zone": 161, "dropoff_zone": 237, "pickup_time": "2023-06-14T18:30:00", "passengers": 1}
+          r = c.post("/predict", json=trip)
           print(r.json()); assert r.status_code == 200
+          assert c.post("/predict", json={**trip, "distance_miles": 99}).json() == r.json()
+          assert "distance_miles" not in c.get("/model").json()["features"]
           PY
       - name: Load test the real server
         run: PYTHONPATH=src python scripts/loadtest.py --requests 1600 --concurrency 8
@@ -39,4 +42,4 @@ jobs:
           docker run -d --name eta -p 8000:8000 taxi-eta-service
           for i in $(seq 1 30); do curl -sf localhost:8000/ready && break; sleep 2; done
           curl -sf -X POST localhost:8000/predict -H 'content-type: application/json' \
-            -d '{"pickup_zone":161,"dropoff_zone":237,"pickup_time":"2023-10-14T18:30:00","distance_miles":2.4}'
+            -d '{"pickup_zone":161,"dropoff_zone":237,"pickup_time":"2023-06-14T18:30:00","passengers":1}'

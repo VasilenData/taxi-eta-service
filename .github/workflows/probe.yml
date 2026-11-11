@@ -1,0 +1,30 @@
+name: Manual booking service probe
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Public HTTP(S) URL of the service to inspect
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check health, readiness, model identity and a booking-only prediction
+        env:
+          PROBE_URL: ${{ inputs.base_url }}
+        run: python scripts/probe.py "$PROBE_URL" --timeout 5 --max-latency-ms 5000 --output "$RUNNER_TEMP/booking-probe.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: booking-probe
+          path: ${{ runner.temp }}/booking-probe.json
+          retention-days: 14
+          if-no-files-found: warn
